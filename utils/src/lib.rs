@@ -175,3 +175,9 @@ pub fn ti(interval: &str) -> u32 {
     }
     .expect("period not found")
 }
+
+//
+
+pub fn td(time_start: u64) -> f32 {
+    (utc_ms() - time_start) as f32 / 1_000.0
+}
