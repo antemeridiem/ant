@@ -1,0 +1,17 @@
+.devcontainer/
+.vscode/
+__pycache__
+target/
+
+.DS_Store
+.env
+*.csv
+*.feather
+*.ipynb
+*.json
+*.lock
+*.pyc
+*.xlsx
+*.yaml
+
+diesel.toml
