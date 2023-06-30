@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use log::debug;
 use polars::prelude::*;
 use std::path::PathBuf;
@@ -56,7 +57,8 @@ where
     for<'a> T: serde::Deserialize<'a>,
 {
     debug!("json read - {}", filepath.as_path().display());
-    serde_json::from_str(&std::fs::read_to_string(&filepath).expect("string failed")).expect("serde failed")
+    serde_json::from_str(&std::fs::read_to_string(&filepath).expect("string failed"))
+        .expect("serde failed")
 }
 
 //
@@ -80,7 +82,8 @@ where
     for<'a> T: serde::Deserialize<'a>,
 {
     debug!("yaml read - {}", filepath.as_path().display());
-    serde_yaml::from_str(&std::fs::read_to_string(&filepath).expect("string failed")).expect("serde failed")
+    serde_yaml::from_str(&std::fs::read_to_string(&filepath).expect("string failed"))
+        .expect("serde failed")
 }
 
 //
@@ -95,4 +98,80 @@ where
         serde_yaml::to_string(data).expect("string failed"),
     )
     .expect("write failed");
+}
+
+//
+//
+//
+
+fn utc() -> std::time::Duration {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("utc failed")
+}
+
+//
+
+pub fn utc_ms() -> u64 {
+    utc().as_millis() as u64
+}
+
+//
+
+pub fn utc_s() -> u32 {
+    utc().as_secs() as u32
+}
+
+//
+//
+//
+
+pub fn date_to_unix_s(date: &str) -> u32 {
+    NaiveDateTime::parse_from_str(&format!("{} 00:00:00", date), "%Y-%m-%d %H:%M:%S")
+        .expect("parse failed")
+        .timestamp() as u32
+}
+
+//
+
+pub fn time_to_unix_s(datetime: NaiveDateTime) -> u32 {
+    datetime.timestamp() as u32
+}
+
+//
+
+pub fn time_to_unix_ms(datetime: NaiveDateTime) -> u64 {
+    datetime.timestamp_millis() as u64
+}
+
+//
+
+pub fn unix_ms_to_time(ts: u64) -> NaiveDateTime {
+    NaiveDateTime::from_timestamp_millis(ts as i64).expect("datetime failed")
+}
+
+//
+
+pub fn unix_s_to_time(ts: u32) -> NaiveDateTime {
+    NaiveDateTime::from_timestamp_opt(ts as i64, 0).expect("datetime failed")
+}
+
+//
+
+pub fn ti(interval: &str) -> u32 {
+    let period: &str = &interval[interval.len() - 1..];
+    assert!(["s", "m", "h", "d", "w"].contains(&period));
+    let length: u32 = interval
+        .replace(&period, "")
+        .parse()
+        .expect("parse failed");
+    match period {
+        "s" => Some(length),
+        "m" => Some(60 * length),
+        "h" => Some(3_600 * length),
+        "d" => Some(86_400 * length),
+        "w" => Some(604_800 * length),
+        _ => None,
+    }
+    .expect("period not found")
 }
