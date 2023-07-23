@@ -5,13 +5,16 @@ Eventually it will be able to download historical klines, trades, withdrawals an
 Currently, the app:
 - Downloads fiat and stabecoin data from coinmarketcap and keeps track of changes
 - Downloads tradable pairs data from binance and keeps track of changes
-- Downloads klines history from binanace
+- Downloads klines history from binanace (according to settings in the `config.yaml` file)
 
 
-Build base image for the app:
+How to run:
+- Build base image for the app:
 ```
 docker build --no-cache -t app_image_base .
 ```
+- Edit path to the `.env` file in the `.devcontainer/devcontainer.json` file or add required env variables by other means
+- Then Open Folder in Container (Dev Containers) in VS Code
 
 ## api - define data connections and download data
 ```
