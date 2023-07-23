@@ -1,0 +1,27 @@
+quote: USDT
+interval: 1w
+api_retries: 3
+api_timeout: 5s
+history:
+  spot_only: true
+  quote_only: true
+  tradable_only: false
+  fiat_removed: true
+  stablecoins_removed: true
+api_clients:
+  binance:
+    url: https://api.binance.com/api/v3
+    limit_requests: 1200
+    limit_period: 1m
+    limit_status_codes: [429, 418, 403]
+  coinmarketcap:
+    url: https://pro-api.coinmarketcap.com
+    limit_requests: 30
+    limit_period: 1m
+    limit_status_codes: [429]
+  kraken:
+    url: https://api.kraken.com/0
+    limit_requests: 1
+    limit_period: 1s
+    limit_status_codes: []
+  
