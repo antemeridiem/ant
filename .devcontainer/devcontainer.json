@@ -1,0 +1,27 @@
+{
+	"name": "ant",
+	"build": {
+		"context": "..",
+		"dockerfile": "./Dockerfile"
+	},
+	"runArgs": [
+		"--env-file=path-to-file/.env"
+	],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"rust-lang.rust-analyzer",
+				"bungcip.better-toml",
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"ms-python.isort",
+				"ms-toolsai.jupyter",
+				"ms-toolsai.vscode-jupyter-cell-tags",
+				"ms-toolsai.jupyter-keymap",
+				"ms-toolsai.vscode-jupyter-slideshow",
+				"ms-toolsai.jupyter-renderers",
+				"mechatroner.rainbow-csv"
+			]
+		}
+	}
+}

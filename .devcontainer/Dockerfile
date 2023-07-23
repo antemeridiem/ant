@@ -1,0 +1,1 @@
+FROM app_image_base
