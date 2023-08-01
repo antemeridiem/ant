@@ -1,3 +1,4 @@
+use hmac::{Hmac, Mac};
 use log::{debug, info};
 use polars::prelude::*;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -69,7 +70,7 @@ impl API<'_> {
 
     pub fn pairs_get(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let url = format!("{}/exchangeInfo", self.client.url);
-        let response = crate::api::request_get(&mut self.client, &url)?;
+        let response = crate::api::request_get(&mut self.client, crate::api::Request::Get(&url))?;
         let response_json: serde_json::Value = serde_json::from_str(&response)?;
         let response_data: Vec<serde_json::Value> =
             serde_json::from_value(response_json["symbols"].clone())?;
@@ -183,7 +184,7 @@ impl API<'_> {
             })
             .filter(|(_, v)| {
                 if self.config_app.history.quote_only {
-                    v.quote == self.config_app.quote
+                    self.config_app.history.quotes.contains(&v.quote)
                 } else {
                     true
                 }
@@ -212,8 +213,10 @@ impl API<'_> {
             .map(|(k, _)| k.clone())
             .collect::<Vec<String>>();
 
-        debug!("number of pairs to get history for: {}", pairs.len());
-        for pair in pairs {
+        let n_pairs = pairs.len();
+        debug!("number of pairs to get history for: {}", n_pairs);
+        for (index, pair) in pairs.iter().enumerate() {
+            info!("{} / {} - {}", index + 1, n_pairs, pair);
             self.pair_history_get(&pair)?;
         }
 
@@ -359,13 +362,166 @@ impl API<'_> {
         if let Some(x) = end_time {
             url = format!("{}&endTime={}", url, x);
         }
-        let response = crate::api::request_get(&mut self.client, &url)?;
+        let response = crate::api::request_get(&mut self.client, crate::api::Request::Get(&url))?;
         Ok(klines_deserialize(&response)?
             .lazy()
             .with_column(lit(pair).alias("pair"))
             .collect()?)
 
         //
+    }
+
+    //
+
+    pub fn trades_get(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        info!("{} trades started", self.label);
+
+        let dir_path = crate::paths::dir_trades().join(self.label);
+        debug!(
+            "{} trades target directory: {}",
+            self.label,
+            &dir_path.as_path().display()
+        );
+        crate::paths::dir_create(&dir_path);
+
+        let file_path_conversions =
+            crate::paths::dir_trades().join(format!("conversions-{}.csv", self.label));
+        let (conversion_pairs, conversions) = if file_path_conversions.exists() {
+            let mut schema: Schema = Schema::new();
+            schema.with_column("id".into(), DataType::UInt64);
+            schema.with_column("orderid".into(), DataType::UInt64);
+            schema.with_column("price".into(), DataType::Utf8);
+            schema.with_column("qty".into(), DataType::Utf8);
+            schema.with_column("quoteqty".into(), DataType::Utf8);
+            schema.with_column("commission".into(), DataType::Utf8);
+            schema.with_column("time".into(), DataType::UInt32);
+            schema.with_column("recorded_at".into(), DataType::UInt32);
+            let conversions = crate::csv_read(&file_path_conversions, Some(schema))?;
+            let conversion_pairs = conversions
+                .clone()
+                .collect()?
+                .column("symbol")?
+                .utf8()?
+                .into_iter()
+                .map(|x| Ok(x.ok_or("pair not found")?.to_string()))
+                .collect::<Result<Vec<String>, Box<dyn std::error::Error>>>()?;
+            info!("conversion pairs are {:?}", conversion_pairs);
+            (conversion_pairs, conversions)
+        } else {
+            (Vec::default(), LazyFrame::default())
+        };
+
+        let pairs = self
+            .pairs
+            .iter()
+            .filter(|(_, v)| {
+                if self.config_app.trades.quote_only {
+                    self.config_app.trades.quotes.contains(&v.quote)
+                } else {
+                    true
+                }
+            })
+            .map(|(k, _)| k.clone())
+            .collect::<Vec<String>>();
+
+        let n_pairs = pairs.len();
+        debug!("number of pairs to get trades for: {}", n_pairs);
+        for (index, pair) in pairs.iter().enumerate() {
+            info!("{} / {} - {}", index + 1, n_pairs, pair);
+            self.trades_pair_get(&pair, &conversion_pairs, &conversions)?;
+        }
+
+        Ok(())
+    }
+
+    //
+
+    pub fn trades_pair_get(
+        &mut self,
+        pair: &str,
+        conversion_pairs: &Vec<String>,
+        conversions: &LazyFrame,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let file_path = crate::paths::dir_trades()
+            .join(self.label)
+            .join(format!("{pair}.feather"));
+        debug!("{} file_path is {}", pair, file_path.as_path().display());
+
+        let mut from_id = 0;
+        let mut trades_previous = LazyFrame::default();
+        if file_path.exists() {
+            trades_previous = crate::feather_read(&file_path)?;
+            from_id = crate::column_maxu(trades_previous.clone(), "id")?;
+        };
+
+        let mut trades_new = Vec::new();
+        let mut n_trades_new: u64 = 0;
+
+        let mut batch = self.trades_pair_batch_get(pair, from_id)?;
+        n_trades_new += batch.height() as u64;
+        while batch.height() > 0 {
+            trades_new.push(
+                batch
+                    .clone()
+                    .lazy()
+                    .with_column(lit(crate::utc_ms()?).alias("recorded_at")),
+            );
+            from_id = crate::column_maxu(batch.clone().lazy(), "id")? + 1;
+            batch = self.trades_pair_batch_get(pair, from_id)?;
+            n_trades_new += batch.height() as u64;
+        }
+
+        if trades_new.len() > 0 {
+            trades_new.insert(0, trades_previous);
+            let mut output = concat(trades_new, true, true)?.collect()?;
+            if conversion_pairs.contains(&pair.to_string()) {
+                info!("conversion trades for {}", pair);
+                output = concat(
+                    Vec::from([
+                        output.lazy(),
+                        conversions.clone().filter(col("symbol").eq(lit(pair))),
+                    ]),
+                    true,
+                    true,
+                )?
+                .collect()?;
+            }
+            output = output
+                .lazy()
+                .unique_stable(None, UniqueKeepStrategy::First)
+                .sort_by_exprs([col("time"), col("id")], [false, false], false)
+                .collect()?;
+            crate::feather_write(&mut output, &file_path)?;
+        }
+        info!("number of new trades for {} is {}", pair, n_trades_new);
+
+        Ok(())
+    }
+
+    //
+
+    pub fn trades_pair_batch_get(
+        &mut self,
+        pair: &str,
+        from_id: u64,
+    ) -> Result<DataFrame, Box<dyn std::error::Error>> {
+        let params = Vec::from([
+            format!("symbol={}", pair),
+            format!("fromId={}", from_id),
+            format!("limit={}", self.config_app.trades.limit),
+            format!("recvWindow={}", self.config_app.trades.recvwindow),
+            format!("timestamp={}", crate::utc_ms()?),
+        ])
+        .join("&");
+        let signature = signature_get(&params)?;
+        let url = format!(
+            "{}/myTrades?{}&signature={}",
+            self.client.url, params, signature
+        );
+        let response = crate::api::request_get(&mut self.client, crate::api::Request::Get(&url))?;
+        // println!("{}", response.clone());
+
+        Ok(trades_deserialize(&response)?)
     }
 }
 
@@ -414,4 +570,108 @@ fn klines_deserialize(response: &str) -> Result<DataFrame, Box<dyn std::error::E
         Series::new("quote asset volume", volume),
         Series::new("number of trades", trades),
     ]))?)
+}
+
+//
+
+#[derive(serde::Deserialize)]
+struct Trade {
+    #[serde(alias = "symbol")]
+    symbol: String,
+    #[serde(alias = "id")]
+    id: u64,
+    #[serde(alias = "orderId")]
+    orderid: u64,
+    #[serde(alias = "orderListId")]
+    orderlistid: i64,
+    #[serde(alias = "price")]
+    price: String,
+    #[serde(alias = "qty")]
+    qty: String,
+    #[serde(alias = "quoteQty")]
+    quoteqty: String,
+    #[serde(alias = "commission")]
+    commission: String,
+    #[serde(alias = "commissionAsset")]
+    commissionasset: String,
+    #[serde(alias = "time")]
+    time: u64,
+    #[serde(alias = "isBuyer")]
+    isbuyer: bool,
+    #[serde(alias = "isMaker")]
+    ismaker: bool,
+    #[serde(alias = "isBestMatch")]
+    isbestmatch: bool,
+}
+
+//
+
+fn trades_deserialize(response: &str) -> Result<DataFrame, Box<dyn std::error::Error>> {
+    let rows: Vec<Trade> = serde_json::from_str(&response)?;
+
+    let mut symbol: Vec<String> = Vec::new();
+    let mut id: Vec<u64> = Vec::new();
+    let mut orderid: Vec<u64> = Vec::new();
+    let mut orderlistid: Vec<i64> = Vec::new();
+    let mut price: Vec<String> = Vec::new();
+    let mut qty: Vec<String> = Vec::new();
+    let mut quoteqty: Vec<String> = Vec::new();
+    let mut commission: Vec<String> = Vec::new();
+    let mut commissionasset: Vec<String> = Vec::new();
+    let mut time: Vec<u64> = Vec::new();
+    let mut isbuyer: Vec<bool> = Vec::new();
+    let mut ismaker: Vec<bool> = Vec::new();
+    let mut isbestmatch: Vec<bool> = Vec::new();
+
+    for row in rows.iter() {
+        symbol.push(row.symbol.clone());
+        id.push(row.id);
+        orderid.push(row.orderid);
+        orderlistid.push(row.orderlistid);
+        price.push(row.price.clone());
+        qty.push(row.qty.clone());
+        quoteqty.push(row.quoteqty.clone());
+        commission.push(row.commission.clone());
+        commissionasset.push(row.commissionasset.clone());
+        time.push(row.time);
+        isbuyer.push(row.isbuyer);
+        ismaker.push(row.ismaker);
+        isbestmatch.push(row.isbestmatch);
+    }
+
+    Ok(
+        DataFrame::new(Vec::from([
+            Series::new("symbol", symbol),
+            Series::new("id", id),
+            Series::new("orderid", orderid),
+            Series::new("orderlistid", orderlistid),
+            Series::new("price", price),
+            Series::new("qty", qty),
+            Series::new("quoteqty", quoteqty),
+            Series::new("commission", commission),
+            Series::new("commissionasset", commissionasset),
+            Series::new("time", time),
+            Series::new("isbuyer", isbuyer),
+            Series::new("ismaker", ismaker),
+            Series::new("isbestmatch", isbestmatch),
+        ]))?, // .lazy()
+              // .with_columns([
+              //     col("price").cast(DataType::Decimal(None, Some(8))),
+              //     col("qty").cast(DataType::Decimal(None, Some(8))),
+              //     col("quoteqty").cast(DataType::Decimal(None, Some(8))),
+              //     col("commission").cast(DataType::Decimal(None, Some(8))),
+              // ])
+              // .collect()?
+    )
+}
+
+//
+
+fn signature_get(request: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let key_secret = std::env::var("BINANCE_API_SECRET")?;
+    let mut key_signed = Hmac::<sha2::Sha256>::new_from_slice(key_secret.as_bytes())?;
+    key_signed.update(request.as_bytes());
+    let signature = hex::encode(key_signed.finalize().into_bytes());
+
+    Ok(format!("{}", signature))
 }

@@ -31,11 +31,11 @@ impl APIClient<'_> {
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct AppConfig {
-    pub quote: String,
     pub interval: String,
     pub api_retries: usize,
     pub api_timeout: String,
     pub history: HistoryConfig,
+    pub trades: TradesConfig,
     pub api_clients: std::collections::HashMap<String, APIClientConfig>,
 }
 
@@ -55,9 +55,20 @@ pub struct APIClientConfig {
 pub struct HistoryConfig {
     pub spot_only: bool,
     pub quote_only: bool,
+    pub quotes: Vec<String>,
     pub tradable_only: bool,
     pub fiat_removed: bool,
     pub stablecoins_removed: bool,
+}
+
+//
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct TradesConfig {
+    pub quote_only: bool,
+    pub quotes: Vec<String>,
+    pub limit: u64,
+    pub recvwindow: u64,
 }
 
 //

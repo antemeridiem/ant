@@ -15,9 +15,13 @@ pub mod structs;
 //
 //
 
-pub fn csv_read(filepath: &PathBuf) -> Result<LazyFrame, Box<dyn std::error::Error>> {
+pub fn csv_read(filepath: &PathBuf, schema: Option<Schema>) -> Result<LazyFrame, Box<dyn std::error::Error>> {
     debug!("csv read - {}", filepath.as_path().display());
-    Ok(LazyCsvReader::new(filepath).has_header(true).finish()?)
+    if let Some(x) = schema {
+        Ok(LazyCsvReader::new(filepath).has_header(true).with_schema(Arc::new(x)).finish()?)
+    } else {
+        Ok(LazyCsvReader::new(filepath).has_header(true).finish()?)
+    }
 }
 
 //

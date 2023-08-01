@@ -36,7 +36,7 @@ impl API<'_> {
 
     pub fn fiat_get(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let url = format!("{}/v1/fiat/map?limit=5000", self.client.url);
-        let response = crate::api::request_get(&mut self.client, &url)?;
+        let response = crate::api::request_get(&mut self.client, crate::api::Request::Get(&url))?;
         let response_json: serde_json::Value = serde_json::from_str(&response)?;
         let response_data: Vec<serde_json::Value> =
             serde_json::from_value(response_json["data"].clone())?;
@@ -66,7 +66,7 @@ impl API<'_> {
             "{}/v1/cryptocurrency/category?id=604f2753ebccdd50cd175fc1&limit=1000",
             self.client.url
         );
-        let response = crate::api::request_get(&mut self.client, &url)?;
+        let response = crate::api::request_get(&mut self.client, crate::api::Request::Get(&url))?;
         let response_json: serde_json::Value = serde_json::from_str(&response)?;
         let response_data: Vec<serde_json::Value> =
             serde_json::from_value(response_json["data"]["coins"].clone())?;

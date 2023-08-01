@@ -57,6 +57,12 @@ pub fn dir_klines() -> PathBuf {
     dir_path
 }
 
+pub fn dir_trades() -> PathBuf {
+    let dir_path = dir_data().join("trades");
+    dir_create(&dir_path);
+    dir_path
+}
+
 pub fn dir_logs() -> PathBuf {
     let dir_path = dir_root().join("logs");
     dir_create(&dir_path);

@@ -15,6 +15,12 @@ pub mod kraken;
 //
 //
 
+#[derive(Clone)]
+pub enum Request<'a> {
+    Get(&'a str),
+    Post((&'a str, &'a str)),
+}
+
 fn _get(url: &str, client: &APIClient) -> Result<Response, reqwest::Error> {
     debug!("get - {}", url);
     client
@@ -24,6 +30,17 @@ fn _get(url: &str, client: &APIClient) -> Result<Response, reqwest::Error> {
         .send()
 }
 
+//
+
+fn _post(url: &str, params: &str, client: &APIClient) -> Result<Response, reqwest::Error> {
+    debug!("post - {} - {} - {:?}", url, params, client.headers);
+    client
+        .client
+        .post(url)
+        .headers(client.headers.clone())
+        .body(params.to_string())
+        .send()
+}
 //
 
 pub fn client_get<'a>(
@@ -59,16 +76,27 @@ pub fn client_get<'a>(
 
 pub fn request_get(
     client: &mut APIClient,
-    url: &str,
+    request: Request,
 ) -> Result<String, Box<dyn std::error::Error>> {
     client.throttler_sleep()?;
 
     let time_start = crate::utc_ms()?;
+    let url = {
+        match request {
+            Request::Get(url) => url,
+            Request::Post(url) => url.0,
+        }
+    };
     if let Ok(x) = retry::retry(
         retry::delay::Exponential::from_millis(10)
             .map(retry::delay::jitter)
             .take(client.api_retries),
-        || match _get(url, &client) {
+        || match {
+            match request.clone() {
+                Request::Get(url) => _get(url, &client),
+                Request::Post(url) => _post(url.0, url.1, &client),
+            }
+        } {
             Ok(response) if response.status().is_success() => retry::OperationResult::Ok(response),
             Ok(response)
                 if client
@@ -78,12 +106,16 @@ pub fn request_get(
                 warn!("requests rate limit reached {}", url);
                 retry::OperationResult::Err("request rate limit reached")
             }
-            _ => retry::OperationResult::Retry(url),
+            response => {
+                // TODO: deal with unwraps
+                debug!("{}", response.unwrap().text().unwrap());
+                retry::OperationResult::Retry(url)
+            }
         },
     ) {
         client.throttler_push()?;
         debug!(
-            "get in {:.3}s - {:?} - {:?}",
+            "request in {:.3}s - {:?} - {:?}",
             crate::td(time_start)?,
             &x.status(),
             url,
@@ -91,10 +123,10 @@ pub fn request_get(
         Ok(x.text()?)
     } else {
         warn!(
-            "api get failed in {:.3}s - {:?}",
+            "request failed in {:.3}s - {:?}",
             crate::td(time_start)?,
             url
         );
-        Err("api get failed".into())
+        Err("request failed".into())
     }
 }
