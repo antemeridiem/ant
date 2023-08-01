@@ -1,6 +1,5 @@
 use base64::{
-    alphabet,
-    engine::{self, general_purpose},
+    engine::general_purpose,
     Engine as _,
 };
 use hmac::{Hmac, Mac};
