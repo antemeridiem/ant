@@ -36,6 +36,7 @@ pub struct AppConfig {
     pub api_timeout: String,
     pub history: HistoryConfig,
     pub trades: TradesConfig,
+    pub withdrawals: WithdrawalsConfig,
     pub api_clients: std::collections::HashMap<String, APIClientConfig>,
 }
 
@@ -72,6 +73,18 @@ pub struct TradesConfig {
 }
 
 //
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct WithdrawalsConfig {
+    pub status: u64,
+    pub limit: u64,
+    pub recvwindow: u64,
+    pub ts_start: String,
+    pub ts_window: String,
+}
+
+//
+
 
 #[derive(Clone, Debug)]
 pub struct DirEntry {

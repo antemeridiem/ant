@@ -15,10 +15,16 @@ pub mod structs;
 //
 //
 
-pub fn csv_read(filepath: &PathBuf, schema: Option<Schema>) -> Result<LazyFrame, Box<dyn std::error::Error>> {
+pub fn csv_read(
+    filepath: &PathBuf,
+    schema: Option<Schema>,
+) -> Result<LazyFrame, Box<dyn std::error::Error>> {
     debug!("csv read - {}", filepath.as_path().display());
     if let Some(x) = schema {
-        Ok(LazyCsvReader::new(filepath).has_header(true).with_schema(Arc::new(x)).finish()?)
+        Ok(LazyCsvReader::new(filepath)
+            .has_header(true)
+            .with_schema(Arc::new(x))
+            .finish()?)
     } else {
         Ok(LazyCsvReader::new(filepath).has_header(true).finish()?)
     }
@@ -168,15 +174,34 @@ pub fn utc_s() -> Result<u32, Box<dyn std::error::Error>> {
 //
 //
 
-pub fn date_to_unix_s(date: &str) -> Result<u32, Box<dyn std::error::Error>> {
-    Ok(
-        NaiveDateTime::parse_from_str(&format!("{} 00:00:00", date), "%Y-%m-%d %H:%M:%S")?
-            .timestamp() as u32,
-    )
+pub fn date_to_unix_s(datetime_string: &str) -> Result<u32, Box<dyn std::error::Error>> {
+    Ok(if datetime_string.chars().count() == 10 {
+        NaiveDateTime::parse_from_str(
+            &format!("{} 00:00:00", datetime_string),
+            "%Y-%m-%d %H:%M:%S",
+        )?
+        .timestamp() as u32
+    } else {
+        NaiveDateTime::parse_from_str(datetime_string, "%Y-%m-%d %H:%M:%S")?.timestamp() as u32
+    })
 }
 
 //
 
+pub fn date_to_unix_ms(datetime_string: &str) -> Result<u64, Box<dyn std::error::Error>> {
+    Ok(if datetime_string.chars().count() == 10 {
+        NaiveDateTime::parse_from_str(
+            &format!("{} 00:00:00", datetime_string),
+            "%Y-%m-%d %H:%M:%S",
+        )?
+        .timestamp_millis() as u64
+    } else {
+        NaiveDateTime::parse_from_str(datetime_string, "%Y-%m-%d %H:%M:%S")?.timestamp_millis()
+            as u64
+    })
+}
+
+//
 pub fn time_to_unix_s(datetime: NaiveDateTime) -> u32 {
     datetime.timestamp() as u32
 }

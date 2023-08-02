@@ -1,8 +1,7 @@
-interval: 1w
 api_retries: 3
 api_timeout: 5s
-history:
-# relevant for Binanace klines only
+history: # history klines are downloaded from Binance only
+  interval: 1w
   spot_only: true
   quote_only: true
   quotes: [USDT]
@@ -10,14 +9,21 @@ history:
   fiat_removed: true
   stablecoins_removed: true
 trades:
-# relevant for Binanace trades only at the moment
+# relevant for Binance trades only
   quote_only: true
   quotes: [EUR]
   limit: 1000
   recvwindow: 60000
+withdrawals:
+# relevant for Binance withdrawals only
+  status: 6
+  limit: 1000
+  recvwindow: 60000
+  ts_start: "2023-01-01"
+  ts_window: 90d
 api_clients:
   binance:
-    url: https://api.binance.com/api/v3
+    url: https://api.binance.com
     limit_requests: 1200
     limit_period: 1m
     limit_status_codes: [429, 418, 403]

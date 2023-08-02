@@ -69,7 +69,7 @@ impl API<'_> {
     //
 
     pub fn pairs_get(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let url = format!("{}/exchangeInfo", self.client.url);
+        let url = format!("{}/api/v3/exchangeInfo", self.client.url);
         let response = crate::api::request_get(&mut self.client, crate::api::Request::Get(&url))?;
         let response_json: serde_json::Value = serde_json::from_str(&response)?;
         let response_data: Vec<serde_json::Value> =
@@ -353,7 +353,7 @@ impl API<'_> {
         //
 
         let mut url = format!(
-            "{}/klines?symbol={}&interval={}",
+            "{}/api/v3/klines?symbol={}&interval={}",
             self.client.url, pair, self.config_app.interval,
         );
         if let Some(x) = limit {
@@ -436,7 +436,7 @@ impl API<'_> {
 
     //
 
-    pub fn trades_pair_get(
+    fn trades_pair_get(
         &mut self,
         pair: &str,
         conversion_pairs: &Vec<String>,
@@ -500,7 +500,7 @@ impl API<'_> {
 
     //
 
-    pub fn trades_pair_batch_get(
+    fn trades_pair_batch_get(
         &mut self,
         pair: &str,
         from_id: u64,
@@ -515,13 +515,105 @@ impl API<'_> {
         .join("&");
         let signature = signature_get(&params)?;
         let url = format!(
-            "{}/myTrades?{}&signature={}",
+            "{}/api/v3/myTrades?{}&signature={}",
             self.client.url, params, signature
         );
         let response = crate::api::request_get(&mut self.client, crate::api::Request::Get(&url))?;
         // println!("{}", response.clone());
 
         Ok(trades_deserialize(&response)?)
+    }
+
+    //
+
+    pub fn withdrawals_get(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let dir_path = crate::paths::dir_withdrawals().join(self.label);
+        debug!(
+            "{} withdrawals target directory: {}",
+            self.label,
+            &dir_path.as_path().display()
+        );
+        crate::paths::dir_create(&dir_path);
+        let file_path = dir_path.join(format!("withdrawals.feather"));
+        debug!("withdrawals file_path is {}", file_path.as_path().display());
+
+        let mut ts_last = crate::date_to_unix_ms(&self.config_app.withdrawals.ts_start)?;
+        let mut withdrawals_previous = LazyFrame::default();
+        if file_path.exists() {
+            withdrawals_previous = crate::feather_read(&file_path)?;
+            ts_last = crate::column_maxu(withdrawals_previous.clone(), "applytime")?
+        };
+
+        let mut withdrawals_new = Vec::new();
+        let mut n_withdrawals_new: u64 = 0;
+
+        let mut batch = self.withdrawals_batch_get(ts_last)?;
+        while ts_last < crate::utc_ms()? {
+            if batch.height() > 0 {
+                n_withdrawals_new += batch.height() as u64;
+                withdrawals_new.push(
+                    batch
+                        .clone()
+                        .lazy()
+                        .with_column(lit(crate::utc_ms()?).alias("recorded_at")),
+                );
+                let ts_last_new = crate::column_maxu(batch.clone().lazy(), "applytime")?;
+                if ts_last != ts_last_new {
+                    ts_last = ts_last_new;
+                } else {
+                    ts_last += 1;
+                }
+            } else {
+                ts_last += crate::ti_ms("60d")?;
+            }
+            batch = self.withdrawals_batch_get(ts_last)?;
+        }
+
+        if withdrawals_new.len() > 0 {
+            withdrawals_new.insert(0, withdrawals_previous);
+            let mut output = concat(withdrawals_new, true, true)?
+                .unique_stable(
+                    Some(Vec::from(["id".to_string()])),
+                    UniqueKeepStrategy::First,
+                )
+                .sort_by_exprs([col("applytime"), col("id")], [false, false], false)
+                .collect()?;
+            crate::feather_write(&mut output, &file_path)?;
+        }
+        info!(
+            "number of new withdrawals for binance is {}",
+            n_withdrawals_new
+        );
+
+        Ok(())
+    }
+
+    //
+
+    fn withdrawals_batch_get(
+        &mut self,
+        ts_start: u64,
+    ) -> Result<DataFrame, Box<dyn std::error::Error>> {
+        let params = Vec::from([
+            format!("status={}", self.config_app.withdrawals.status),
+            format!("limit={}", self.config_app.withdrawals.limit),
+            format!("recvWindow={}", self.config_app.withdrawals.recvwindow),
+            format!("startTime={}", ts_start),
+            format!(
+                "endTime={}",
+                ts_start + crate::ti_ms(&self.config_app.withdrawals.ts_window)?
+            ),
+            format!("timestamp={}", crate::utc_ms()?),
+        ])
+        .join("&");
+        let signature = signature_get(&params)?;
+        let url = format!(
+            "{}/sapi/v1/capital/withdraw/history?{}&signature={}",
+            self.client.url, params, signature
+        );
+        let response = crate::api::request_get(&mut self.client, crate::api::Request::Get(&url))?;
+
+        Ok(withdrawals_deserialize(&response)?)
     }
 }
 
@@ -660,6 +752,112 @@ fn trades_deserialize(response: &str) -> Result<DataFrame, Box<dyn std::error::E
               //     col("qty").cast(DataType::Decimal(None, Some(8))),
               //     col("quoteqty").cast(DataType::Decimal(None, Some(8))),
               //     col("commission").cast(DataType::Decimal(None, Some(8))),
+              // ])
+              // .collect()?
+    )
+}
+
+//
+
+#[derive(serde::Deserialize)]
+struct Withdrawal {
+    #[serde(alias = "id")]
+    id: String,
+    #[serde(alias = "amount")]
+    amount: String,
+    #[serde(alias = "transactionFee")]
+    transactionfee: String,
+    #[serde(alias = "coin")]
+    coin: String,
+    #[serde(alias = "status")]
+    status: i64,
+    #[serde(alias = "address")]
+    address: String,
+    #[serde(alias = "txId")]
+    txid: String,
+    #[serde(alias = "applyTime")]
+    applytime: String,
+    #[serde(alias = "network")]
+    network: String,
+    #[serde(alias = "transferType")]
+    transfertype: i64,
+    #[serde(default, alias = "withdrawOrderId")]
+    withdraworderid: String,
+    #[serde(alias = "info")]
+    info: String,
+    #[serde(alias = "confirmNo")]
+    confirmno: i64,
+    #[serde(alias = "walletType")]
+    wallettype: i64,
+    #[serde(alias = "txKey")]
+    txkey: String,
+    #[serde(alias = "completeTime")]
+    completetime: String,
+}
+
+//
+
+fn withdrawals_deserialize(response: &str) -> Result<DataFrame, Box<dyn std::error::Error>> {
+    let rows: Vec<Withdrawal> = serde_json::from_str(&response)?;
+
+    let mut id: Vec<String> = Vec::new();
+    let mut amount: Vec<String> = Vec::new();
+    let mut transactionfee: Vec<String> = Vec::new();
+    let mut coin: Vec<String> = Vec::new();
+    let mut status: Vec<i64> = Vec::new();
+    let mut address: Vec<String> = Vec::new();
+    let mut txid: Vec<String> = Vec::new();
+    let mut applytime: Vec<u64> = Vec::new();
+    let mut network: Vec<String> = Vec::new();
+    let mut transfertype: Vec<i64> = Vec::new();
+    let mut withdraworderid: Vec<String> = Vec::new();
+    let mut info: Vec<String> = Vec::new();
+    let mut confirmno: Vec<i64> = Vec::new();
+    let mut wallettype: Vec<i64> = Vec::new();
+    let mut txkey: Vec<String> = Vec::new();
+    let mut completetime: Vec<u64> = Vec::new();
+
+    for row in rows.iter() {
+        id.push(row.id.clone());
+        amount.push(row.amount.clone());
+        transactionfee.push(row.transactionfee.clone());
+        coin.push(row.coin.clone());
+        status.push(row.status);
+        address.push(row.address.clone());
+        txid.push(row.txid.clone());
+        applytime.push(crate::date_to_unix_ms(&row.applytime)?);
+        network.push(row.network.clone());
+        transfertype.push(row.transfertype);
+        withdraworderid.push(row.withdraworderid.clone());
+        info.push(row.info.clone());
+        confirmno.push(row.confirmno);
+        wallettype.push(row.wallettype);
+        txkey.push(row.txkey.clone());
+        completetime.push(crate::date_to_unix_ms(&row.completetime)?);
+    }
+
+    Ok(
+        DataFrame::new(Vec::from([
+            Series::new("id", id),
+            Series::new("amount", amount),
+            Series::new("transactionfee", transactionfee),
+            Series::new("coin", coin),
+            Series::new("status", status),
+            Series::new("address", address),
+            Series::new("txid", txid),
+            Series::new("applytime", applytime),
+            Series::new("network", network),
+            Series::new("transfertype", transfertype),
+            Series::new("withdraworderid", withdraworderid),
+            Series::new("info", info),
+            Series::new("confirmno", confirmno),
+            Series::new("wallettype", wallettype),
+            Series::new("txkey", txkey),
+            Series::new("completetime", completetime),
+        ]))?, // .lazy()
+              // .with_columns([
+              //     col("amount").cast(DataType::Decimal(None, Some(8))),
+              //     col("transactionfee").cast(DataType::Decimal(None, Some(8))),
               // ])
               // .collect()?
     )

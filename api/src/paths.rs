@@ -63,6 +63,12 @@ pub fn dir_trades() -> PathBuf {
     dir_path
 }
 
+pub fn dir_withdrawals() -> PathBuf {
+    let dir_path = dir_data().join("withdrawals");
+    dir_create(&dir_path);
+    dir_path
+}
+
 pub fn dir_logs() -> PathBuf {
     let dir_path = dir_root().join("logs");
     dir_create(&dir_path);
