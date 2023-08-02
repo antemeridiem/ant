@@ -1,6 +1,7 @@
 api_retries: 3
 api_timeout: 5s
 history: # history klines are downloaded from Binance only
+  do_history: true
   interval: 1w
   spot_only: true
   quote_only: true
@@ -9,18 +10,20 @@ history: # history klines are downloaded from Binance only
   fiat_removed: true
   stablecoins_removed: true
 trades:
-# relevant for Binance trades only
+  do_trades: [binance, kraken]
+  # following settings are relevant for Binance trades only, kraken downloads trades without settings
   quote_only: true
   quotes: [EUR]
   limit: 1000
   recvwindow: 60000
 withdrawals:
-# relevant for Binance withdrawals only
+  do_withdrawals: [binance, kraken]
+  # following settings are relevant for Binance withdrawals only, kraken downloads withdrawals without settings
   status: 6
   limit: 1000
   recvwindow: 60000
   ts_start: "2023-01-01"
-  ts_window: 90d
+  ts_window: 60d
 api_clients:
   binance:
     url: https://api.binance.com

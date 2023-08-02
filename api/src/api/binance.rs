@@ -267,7 +267,7 @@ impl API<'_> {
                 col("number of trades"),
             ])
         };
-        let mut df = crate::timestamps_missing(lf, &self.config_app.interval)?
+        let mut df = crate::timestamps_missing(lf, &self.config_app.history.interval)?
             .sort("ts", Default::default())
             .collect()?;
 
@@ -301,7 +301,7 @@ impl API<'_> {
         info!(
             "{} {} from {}, nrows {}",
             pair,
-            self.config_app.interval,
+            self.config_app.history.interval,
             crate::unix_s_to_time(ts)?,
             df.shape().0
         );
@@ -326,7 +326,7 @@ impl API<'_> {
             info!(
                 "{} {} from {}, nrows {}",
                 pair,
-                self.config_app.interval,
+                self.config_app.history.interval,
                 crate::unix_s_to_time(ts)?,
                 df.shape().0
             );
@@ -354,7 +354,7 @@ impl API<'_> {
 
         let mut url = format!(
             "{}/api/v3/klines?symbol={}&interval={}",
-            self.client.url, pair, self.config_app.interval,
+            self.client.url, pair, self.config_app.history.interval,
         );
         if let Some(x) = limit {
             url = format!("{}&limit={}", url, x);
@@ -564,7 +564,7 @@ impl API<'_> {
                     ts_last += 1;
                 }
             } else {
-                ts_last += crate::ti_ms("60d")?;
+                ts_last += crate::ti_ms(&self.config_app.withdrawals.ts_window)?;
             }
             batch = self.withdrawals_batch_get(ts_last)?;
         }

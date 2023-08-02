@@ -16,6 +16,8 @@ use crate::structs::AppConfig;
 pub struct API<'a> {
     pub label: &'a str,
     pub client: APIClient<'a>,
+    pub config_app: &'a AppConfig,
+    pub pairs: HashMap<String, crate::structs::Pair>,
 }
 
 //
@@ -25,15 +27,18 @@ impl API<'_> {
         let mut headers = HeaderMap::new();
         headers.insert(
             HeaderName::from_static("api-key"),
-            // "API-Key",
             HeaderValue::from_str(&std::env::var("KRAKEN_API_KEY")?)?,
         );
         let label = "kraken";
-
-        Ok(API {
+        let mut api = API {
             label,
             client: crate::api::client_get(label, config, headers)?,
-        })
+            config_app: config,
+            pairs: HashMap::new(),
+        };
+        api.pairs_get()?;
+
+        Ok(api)
     }
 
     //
@@ -47,6 +52,9 @@ impl API<'_> {
         info!("number of pairs: {}", pairs_data.len());
         crate::config_write_json(&pairs_data, &crate::paths::file_pairs_kraken())?;
 
+        // TODO: deserialize pairs data
+
+        // self.pairs = pairs;
         Ok({})
     }
 

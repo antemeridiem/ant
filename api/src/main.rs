@@ -1,4 +1,3 @@
-
 fn main() {
     env_logger::init();
 
@@ -11,11 +10,23 @@ fn main() {
         api.stablecoins_get().expect("stablecoins failed");
         println!("throttler: {:?}", api.client.throttler.len());
     }
-    
+
     // binance
     {
         let mut api = api::api::binance::API::new(&config).expect("api failed");
-        api.history_get().expect("history failed");
+        if config.history.do_history {
+            api.history_get().expect("history failed");
+        }
+        if config.trades.do_trades.contains(&api.label.to_string()) {
+            api.trades_get().expect("trades failed");
+        }
+        if config
+            .withdrawals
+            .do_withdrawals
+            .contains(&api.label.to_string())
+        {
+            api.withdrawals_get().expect("withdrawals failed");
+        }
         println!("throttler: {:?}", api.client.throttler.len());
     }
 
@@ -23,6 +34,18 @@ fn main() {
     {
         let mut api = api::api::kraken::API::new(&config).expect("api failed");
         api.pairs_get().expect("pairs failed");
+
+        if config.trades.do_trades.contains(&api.label.to_string()) {
+            api.trades_get().expect("trades failed");
+        }
+        if config
+            .withdrawals
+            .do_withdrawals
+            .contains(&api.label.to_string())
+        {
+            api.withdrawals_get().expect("withdrawals failed");
+        }
+
         println!("throttler: {:?}", api.client.throttler.len());
     }
 }

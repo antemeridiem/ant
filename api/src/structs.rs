@@ -31,7 +31,6 @@ impl APIClient<'_> {
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct AppConfig {
-    pub interval: String,
     pub api_retries: usize,
     pub api_timeout: String,
     pub history: HistoryConfig,
@@ -54,6 +53,8 @@ pub struct APIClientConfig {
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct HistoryConfig {
+    pub do_history: bool,
+    pub interval: String,
     pub spot_only: bool,
     pub quote_only: bool,
     pub quotes: Vec<String>,
@@ -66,6 +67,7 @@ pub struct HistoryConfig {
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct TradesConfig {
+    pub do_trades: Vec<String>,
     pub quote_only: bool,
     pub quotes: Vec<String>,
     pub limit: u64,
@@ -76,6 +78,7 @@ pub struct TradesConfig {
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 pub struct WithdrawalsConfig {
+    pub do_withdrawals: Vec<String>,
     pub status: u64,
     pub limit: u64,
     pub recvwindow: u64,
