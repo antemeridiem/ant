@@ -6,7 +6,7 @@ Currently, the app:
 - Downloads fiat and stabecoin data from coinmarketcap and keeps track of changes
 - Downloads tradable pairs data from binance and keeps track of changes
 - Downloads klines history from binanace (according to settings in the `config.yaml` file)
-
+- Downloads trades and withdrawals from binance (according to settings in the `config.yaml` file) and kraken
 
 How to run:
 - Build base image for the app:
